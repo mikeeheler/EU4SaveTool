@@ -5,19 +5,27 @@
     using System.IO;
     using System.IO.Compression;
     using System.Linq;
+    using System.Runtime;
     using System.Runtime.InteropServices;
     using System.Security.Cryptography;
     using System.Text;
     using System.Text.RegularExpressions;
 
+    using Microsoft.Win32;
+
     public static class Program
     {
         private const StringComparison _ignoreCaseCmp = StringComparison.OrdinalIgnoreCase;
+        private const int _eu4AppId = 236850;
 
         private static readonly Encoding _encoding = CodePagesEncodingProvider.Instance.GetEncoding(1252);
         private static readonly object _writeLock = new object();
 
         private static FileSystemWatcher _watcher = null;
+
+        private static string _eu4InstallPath = string.Empty;
+        private static string _localSavesPath = string.Empty;
+        private static string _cloudSavesPath = string.Empty;
 
         public static int Main(string[] args)
         {
@@ -45,6 +53,21 @@
                 Error("Usage: EU4SaveTool <file.eu4>");
                 return -1;
             }
+
+            SteamAppManifest eu4AppManifest = GetEu4AppManifest();
+            string steamInstallPath = Steam.InstallPath;
+            uint activeUserId = Steam.ActiveUserId;
+            string steamUserDataPath = Path.Combine(steamInstallPath, "userdata", activeUserId.ToString());
+            string eu4UserDataPath = Path.Combine(steamUserDataPath, _eu4AppId.ToString());
+
+            string _eu4InstallPath = Path.GetFullPath(eu4AppManifest.InstallDir);
+            string _localSavesPath = Path.GetFullPath(Path.Combine(GetMyDocumentsPath(), "Paradox Interactive", eu4AppManifest.Name, "save games"));
+            string _cloudSavesPath = Path.GetFullPath(Path.Combine(eu4UserDataPath, "remote", "save games"));
+
+            Out("EU4 Install Path: " + _eu4InstallPath);
+            Out("Local Saves: " + _localSavesPath);
+            Out("Cloud Saves: " + _cloudSavesPath);
+            Out(string.Empty);
 
             string fullPath = Load(args[0]);
 
@@ -77,6 +100,8 @@
                     Out("  show <command>");
                     Out("    backups");
                     Out("      Show all available backups for the loaded save file.");
+                    Out("    saves");
+                    Out("      List all saves files.");
                     Out("  clean <command>");
                     Out("    backups [keep=10]");
                     Out("      Clean backups for loaded save file, keeping the latest [keep] (defualt: 10).");
@@ -176,6 +201,27 @@
             return appDataPath;
         }
 
+        private static string GetMyDocumentsPath()
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                throw new NotSupportedException("Must be run on Windows.");
+            }
+
+            const string subKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders";
+
+            using (var regKey = Registry.CurrentUser.OpenSubKey(subKey))
+            {
+                if (regKey == null)
+                {
+                    throw new InvalidOperationException("Unable to open HKCU\\" + subKey);
+                }
+
+                string myDocs = regKey.GetValue("Personal").ToString();
+                return myDocs;
+            }
+        }
+
         private static string GetBaseBackupPath()
         {
             string backupPath = Path.Combine(GetAppDataPath(), "backups");
@@ -192,6 +238,26 @@
             Directory.CreateDirectory(backupPath);
 
             return backupPath;
+        }
+
+        private static SteamAppManifest GetEu4AppManifest()
+        {
+            uint steamActiveUserId = Steam.ActiveUserId;
+            if (steamActiveUserId == 0)
+            {
+                Error("Steam must be running.");
+                return null;
+            }
+
+            string steamInstallPath = Steam.InstallPath;
+            var installedApps = Steam.GetInstalledApps();
+            var eu4AppManifest = installedApps.FirstOrDefault(x => x.AppId == _eu4AppId);
+            if (eu4AppManifest == null)
+            {
+                Error("Could not find EU4 install path.");
+            }
+
+            return eu4AppManifest;
         }
 
         private static void OnChanged(object source, FileSystemEventArgs e)
@@ -481,6 +547,10 @@
             {
                 ShowBackups(fullPath);
             }
+            else if ("saves".Equals(action, _ignoreCaseCmp))
+            {
+                ShowSaves();
+            }
         }
 
         private static void ShowBackups(string fullPath)
@@ -504,6 +574,21 @@
                     Out($"| {i,-3} | {save.Date.ToString().PadRight(10)} | {save.PlayerTag} | {BoolYesNo(save.IronMan),-7} | {hash} |");
                 }
                 ++i;
+            }
+        }
+
+        private static void ShowSaves()
+        {
+            Out("Local Saves:");
+            foreach (string path in Directory.EnumerateFiles(_localSavesPath, "*.eu4", SearchOption.AllDirectories))
+            {
+                Out("  " + path.Substring(_localSavesPath.Length + 1));
+            }
+
+            Out("Cloud Saves:");
+            foreach (string path in Directory.EnumerateFiles(_cloudSavesPath, "*.eu4", SearchOption.AllDirectories))
+            {
+                Out("  " + path.Substring(_cloudSavesPath.Length + 1));
             }
         }
 
