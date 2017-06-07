@@ -2,6 +2,7 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.IO;
     using System.IO.Compression;
     using System.Linq;
@@ -10,6 +11,8 @@
     using System.Security.Cryptography;
     using System.Text;
     using System.Text.RegularExpressions;
+    using System.Threading;
+    using System.Threading.Tasks;
 
     using Microsoft.Win32;
 
@@ -27,8 +30,12 @@
         private static string _localSavesPath = string.Empty;
         private static string _cloudSavesPath = string.Empty;
 
+        private static string _loadedFilePath = string.Empty;
+
         public static int Main(string[] args)
         {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
             var savedInputEncoding = Console.InputEncoding;
             var savedOutputEncoding = Console.OutputEncoding;
 
@@ -48,12 +55,6 @@
 
         private static int Execute(string[] args)
         {
-            if (args.Length < 1)
-            {
-                Error("Usage: EU4SaveTool <file.eu4>");
-                return -1;
-            }
-
             SteamAppManifest eu4AppManifest = GetEu4AppManifest();
             string steamInstallPath = Steam.InstallPath;
             uint activeUserId = Steam.ActiveUserId;
@@ -69,17 +70,25 @@
             Out("Cloud Saves: " + _cloudSavesPath);
             Out(string.Empty);
 
-            string fullPath = Load(args[0]);
+            if (args.Length > 0)
+            {
+                Load(args[0]);
+            }
 
             Out("Type 'help' or '?' for help.");
 
             do
             {
-                string directory = Path.GetDirectoryName(fullPath);
-                string fileName = Path.GetFileName(fullPath);
-                string baseName = Path.GetFileNameWithoutExtension(fullPath);
+                bool isLoaded = !string.IsNullOrWhiteSpace(_loadedFilePath)
+                    && File.Exists(_loadedFilePath);
+                string prompt = isLoaded ? Path.GetFileNameWithoutExtension(_loadedFilePath) : "--not loaded--";
 
-                string input = ReadInput($"{baseName}> ");
+                string input = ReadInput($"{prompt}> ");
+                if (string.IsNullOrWhiteSpace(input))
+                {
+                    continue;
+                }
+
                 string[] cmdArgs = ParseInput(input);
                 if (cmdArgs.Length < 1)
                 {
@@ -92,66 +101,49 @@
                 if ("help".Equals(cmd, _ignoreCaseCmp)
                     || "?".Equals(cmd, _ignoreCaseCmp))
                 {
-                    Out("Commands:");
-                    Out("  tag <new tag> <new country name>");
-                    Out("    Changes the player tag; modifies the loaded save file.");
-                    Out("  load <file-path.eu4>");
-                    Out("    Load a different save file.");
-                    Out("  show <command>");
-                    Out("    backups");
-                    Out("      Show all available backups for the loaded save file.");
-                    Out("    saves");
-                    Out("      List all saves files.");
-                    Out("  clean <command>");
-                    Out("    backups [keep=10]");
-                    Out("      Clean backups for loaded save file, keeping the latest [keep] (defualt: 10).");
-                    Out("    all backups");
-                    Out("      Erases all backups for all save files.");
-                    Out("  backup");
-                    Out("    Back up the current save file.");
-                    Out("  restore <hash | 'latest'>");
-                    Out("    Restore backup from the given hash identifier. Partial hash is OK.");
-                    Out("    Use 'show backups' for list of existing backups.");
-                    Out("  print");
-                    Out("    Output all meta data for the loaded save file.");
-                    Out("  quit");
-                    Out("    Exit " + nameof(EU4SaveTool) + ".");
+                    ShowHelp();
                 }
                 else if ("tag".Equals(cmd, _ignoreCaseCmp)
                     && cmdParams.Length >= 2
                     && cmdParams[0].Length == 3
                     && !string.IsNullOrWhiteSpace(cmdParams[1]))
                 {
-                    ChangeTag(fullPath, cmdParams[0], cmdParams[1]);
+                    string tag = cmdParams[0];
+                    string newCountryName = cmdParams[1];
+
+                    ChangeTag(tag, newCountryName);
                 }
                 else if ("clean".Equals(cmd, _ignoreCaseCmp)
                     && cmdParams.Length >= 1)
                 {
-                    Clean(fullPath, cmdParams);
+                    Clean(cmdParams);
                 }
                 else if ("load".Equals(cmd, _ignoreCaseCmp)
                     && cmdParams.Length >= 1)
                 {
-                    fullPath = Load(cmdParams[0]);
+                    string filePath = cmdParams[0];
+                    Load(filePath);
                 }
                 else if ("backup".Equals(cmd, _ignoreCaseCmp))
                 {
-                    Backup(fullPath);
+                    Backup();
                 }
                 else if ("restore".Equals(cmd, _ignoreCaseCmp)
                     && cmdParams.Length >= 1
                     && !string.IsNullOrEmpty(cmdParams[0]))
                 {
-                    Restore(fullPath, cmdParams[0]);
+                    string hash = cmdParams[0];
+                    Restore(hash);
                 }
                 else if ("print".Equals(cmd, _ignoreCaseCmp))
                 {
-                    Print(fullPath);
+                    Print();
                 }
                 else if ("show".Equals(cmd, _ignoreCaseCmp)
                     && cmdParams.Length >= 1)
                 {
-                    Show(fullPath, cmdParams[0]);
+                    string action = cmdParams[0];
+                    Show(action);
                 }
                 else if ("q".Equals(cmd, _ignoreCaseCmp)
                     || "quit".Equals(cmd, _ignoreCaseCmp))
@@ -182,26 +174,35 @@
             Console.WriteLine(message);
         }
 
-        private static string GetAppDataPath()
+        private static void ShowHelp(params string[] args)
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                throw new NotSupportedException("Must be run on Windows.");
-            }
-
-            string localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
-            if (string.IsNullOrWhiteSpace(localAppData) || !Directory.Exists(localAppData))
-            {
-                throw new InvalidOperationException("Unable to find local app data folder.");
-            }
-
-            string appDataPath = Path.Combine(localAppData, nameof(EU4SaveTool));
-            Directory.CreateDirectory(appDataPath);
-
-            return appDataPath;
+            Out("Commands:");
+            Out("  tag <new tag> <new country name>");
+            Out("    Changes the player tag; modifies the loaded save file.");
+            Out("  load <file-path.eu4>");
+            Out("    Load a different save file.");
+            Out("  show <command>");
+            Out("    backups");
+            Out("      Show all available backups for the loaded save file.");
+            Out("    saves");
+            Out("      List all saves files.");
+            Out("  clean <command>");
+            Out("    backups [keep=10]");
+            Out("      Clean backups for loaded save file, keeping the latest [keep] (defualt: 10).");
+            Out("    all backups");
+            Out("      Erases all backups for all save files.");
+            Out("  backup");
+            Out("    Back up the current save file.");
+            Out("  restore <hash | 'latest'>");
+            Out("    Restore backup from the given hash identifier. Partial hash is OK.");
+            Out("    Use 'show backups' for list of existing backups.");
+            Out("  print");
+            Out("    Output all meta data for the loaded save file.");
+            Out("  quit");
+            Out("    Exit " + nameof(EU4SaveTool) + ".");
         }
 
-        private static string GetMyDocumentsPath()
+        private static string GetShellFolder(string key)
         {
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -217,9 +218,27 @@
                     throw new InvalidOperationException("Unable to open HKCU\\" + subKey);
                 }
 
-                string myDocs = regKey.GetValue("Personal").ToString();
-                return myDocs;
+                return regKey.GetValue(key).ToString();
             }
+        }
+
+        private static string GetAppDataPath()
+        {
+            string localAppData = GetShellFolder("Local AppData");
+            if (string.IsNullOrWhiteSpace(localAppData) || !Directory.Exists(localAppData))
+            {
+                throw new InvalidOperationException("Unable to find local app data folder.");
+            }
+
+            string appDataPath = Path.Combine(localAppData, nameof(EU4SaveTool));
+            Directory.CreateDirectory(appDataPath);
+
+            return appDataPath;
+        }
+
+        private static string GetMyDocumentsPath()
+        {
+            return GetShellFolder("Personal");
         }
 
         private static string GetBaseBackupPath()
@@ -262,14 +281,16 @@
 
         private static void OnChanged(object source, FileSystemEventArgs e)
         {
-            if (File.Exists(e.FullPath))
+            if (e.FullPath.Equals(_loadedFilePath))
             {
-                Backup(e.FullPath);
+                Task.Delay(TimeSpan.FromSeconds(1.0)).ContinueWith(_ => Backup());
             }
         }
 
         private static void OnWatcherError(object source, ErrorEventArgs e)
         {
+            Out("-> OnWatcherError: " + e.GetException().ToString());
+
             _watcher.EnableRaisingEvents = false;
             string path = _watcher.Path;
             string filter = _watcher.Filter;
@@ -310,16 +331,17 @@
             }
         }
 
-        private static string Load(string filePath)
+        private static void Load(params string[] args)
         {
-            string fullPath = Path.GetFullPath(filePath);
+            _loadedFilePath = Path.GetFullPath(args[0]);
 
-            Backup(fullPath);
+            Backup();
 
-            string directory = Path.GetDirectoryName(fullPath);
-            string fileName = Path.GetFileName(fullPath);
+            string directory = Path.GetDirectoryName(_loadedFilePath);
+            string fileName = Path.GetFileName(_loadedFilePath);
+            string ext = Path.GetExtension(_loadedFilePath);
 
-            Out("Loaded " + fullPath);
+            Out("Loaded " + _loadedFilePath);
 
             lock (_writeLock)
             {
@@ -332,38 +354,40 @@
                 _watcher.Changed += OnChanged;
                 _watcher.Created += OnChanged;
                 _watcher.Deleted += OnChanged;
+                _watcher.Renamed += OnChanged;
                 _watcher.Error += OnWatcherError;
                 _watcher.EnableRaisingEvents = true;
             }
-
-            return fullPath;
         }
 
-        private static void Backup(string filePath)
+        private static void Backup()
         {
-            if (!File.Exists(filePath))
+            if (!File.Exists(_loadedFilePath))
             {
                 return;
             }
 
             lock (_writeLock)
             {
-                string fullPath = Path.GetFullPath(filePath);
-                string ext = Path.GetExtension(fullPath);
-                string hash = GetHash(fullPath);
+                string ext = Path.GetExtension(_loadedFilePath);
+                string hash = GetHash(_loadedFilePath);
 
-                string backupDirName = GetBackupPath(fullPath);
+                string backupDirName = GetBackupPath(_loadedFilePath);
                 string backupFileName = $"{hash}{ext}";
                 string backupFilePath = Path.Combine(backupDirName, backupFileName);
 
-                Directory.CreateDirectory(backupDirName);
-                File.Copy(fullPath, backupFilePath, true);
+                if (!File.Exists(backupFilePath))
+                {
+                    Directory.CreateDirectory(backupDirName);
+                    File.Copy(_loadedFilePath, backupFilePath, true);
+
+                    Out("Backup created: " + hash);
+                }
             }
         }
 
-        private static void Clean(string filePath, params string[] args)
+        private static void Clean(params string[] args)
         {
-            string fullPath = Path.GetFullPath(filePath);
             string action = args.First();
 
             if ("backups".Equals(action, _ignoreCaseCmp))
@@ -376,7 +400,7 @@
                     amountToKeep = parsed;
                 }
 
-                CleanBackups(fullPath, amountToKeep);
+                CleanBackups(amountToKeep);
             }
             else if ("all".Equals(action, _ignoreCaseCmp)
                 && args.Length >= 2
@@ -386,7 +410,7 @@
             }
         }
 
-        private static void CleanBackups(string filePath, int amountToKeep)
+        private static void CleanBackups(int amountToKeep)
         {
             Out("Not yet implemented.");
         }
@@ -398,14 +422,14 @@
             Out($"All backups removed from {backupPath}.");
         }
 
-        private static void ChangeTag(string file, string tag, string name)
+        private static void ChangeTag(string tag, string name)
         {
             byte[] tagContext = { 0x38, 0x2a, 0x01, 0x00, 0x0f, 0x00 };
             byte[] nameContext = { 0xb8, 0x32, 0x01, 0x00, 0x0f, 0x00 };
 
             lock (_writeLock)
             {
-                using (var zipArchive = ZipFile.Open(file, ZipArchiveMode.Update))
+                using (var zipArchive = ZipFile.Open(_loadedFilePath, ZipArchiveMode.Update))
                 {
                     var entry = zipArchive.GetEntry("meta");
                     byte[] metaBytes = new byte[entry.Length];
@@ -446,11 +470,10 @@
             }
         }
 
-        private static void Restore(string filePath, string hash)
+        private static void Restore(string hash)
         {
-            string fullPath = Path.GetFullPath(filePath);
-            string backupFilePath = GetBackupPath(fullPath);
-            string ext = Path.GetExtension(fullPath);
+            string backupFilePath = GetBackupPath(_loadedFilePath);
+            string ext = Path.GetExtension(_loadedFilePath);
 
             if ("last".Equals(hash, _ignoreCaseCmp)
                 || "latest".Equals(hash, _ignoreCaseCmp))
@@ -461,7 +484,7 @@
                 {
                     lock (_writeLock)
                     {
-                        File.Copy(latestBackup, fullPath, true);
+                        File.Copy(latestBackup, _loadedFilePath, true);
                         Out($"Restored {Path.GetFileName(latestBackup)}");
                     }
                 }
@@ -492,16 +515,16 @@
                 {
                     lock (_writeLock)
                     {
-                        File.Copy(restorePath, fullPath, true);
-                        Out($"Restored '{Path.GetFileNameWithoutExtension(restorePath)}' to '{fullPath}");
+                        File.Copy(restorePath, _loadedFilePath, true);
+                        Out($"Restored '{Path.GetFileNameWithoutExtension(restorePath)}' to '{_loadedFilePath}");
                     }
                 }
             }
         }
 
-        private static void Print(string fullPath)
+        private static void Print()
         {
-            using (Stream contentStream = OpenMeta(fullPath))
+            using (Stream contentStream = OpenMeta(_loadedFilePath))
             {
                 var saveData = EU4SaveMeta.Load(contentStream);
                 Out($"SaveType: {saveData.SaveType}");
@@ -541,11 +564,11 @@
             }
         }
 
-        private static void Show(string fullPath, string action)
+        private static void Show(string action)
         {
             if ("backups".Equals(action, _ignoreCaseCmp))
             {
-                ShowBackups(fullPath);
+                ShowBackups();
             }
             else if ("saves".Equals(action, _ignoreCaseCmp))
             {
@@ -553,10 +576,10 @@
             }
         }
 
-        private static void ShowBackups(string fullPath)
+        private static void ShowBackups()
         {
-            string backupDirName = GetBackupPath(fullPath);
-            string ext = Path.GetExtension(fullPath);
+            string backupDirName = GetBackupPath(_loadedFilePath);
+            string ext = Path.GetExtension(_loadedFilePath);
             IEnumerable<string> backupFiles = Directory.EnumerateFileSystemEntries(backupDirName, $"*{ext}");
             IOrderedEnumerable<string> sorted = backupFiles.OrderByDescending(x => new FileInfo(x).LastWriteTimeUtc);
             int i = 1;
@@ -582,13 +605,13 @@
             Out("Local Saves:");
             foreach (string path in Directory.EnumerateFiles(_localSavesPath, "*.eu4", SearchOption.AllDirectories))
             {
-                Out("  " + path.Substring(_localSavesPath.Length + 1));
+                Out("  " + Path.GetFileNameWithoutExtension(path));
             }
 
             Out("Cloud Saves:");
             foreach (string path in Directory.EnumerateFiles(_cloudSavesPath, "*.eu4", SearchOption.AllDirectories))
             {
-                Out("  " + path.Substring(_cloudSavesPath.Length + 1));
+                Out("  " + Path.GetFileNameWithoutExtension(path));
             }
         }
 
