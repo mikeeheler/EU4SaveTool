@@ -412,7 +412,21 @@
 
         private static void CleanBackups(int amountToKeep)
         {
-            Out("Not yet implemented.");
+            string ext = Path.GetExtension(_loadedFilePath);
+            string backupPath = GetBackupPath(_loadedFilePath);
+
+            string[] allBackups
+                = Directory.EnumerateFiles(backupPath, $"*{ext}", SearchOption.AllDirectories)
+                    .OrderByDescending(x => new FileInfo(x).LastWriteTimeUtc)
+                    .Skip(amountToKeep)
+                    .ToArray();
+            
+            foreach (string path in allBackups)
+            {
+                string hash = Path.GetFileNameWithoutExtension(path);
+                File.Delete(path);
+                Out($"Removed {hash}");
+            }
         }
 
         private static void CleanAllBackups()
