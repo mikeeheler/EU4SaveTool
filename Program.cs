@@ -34,6 +34,21 @@
 
         public static int Main(string[] args)
         {
+            var test = new List<BackupData>
+            {
+                new BackupData
+                {
+                    Hash = "123abc",
+                    SaveName = "test.eu4",
+                    SaveLocation = EU4SaveLocation.Local
+                }
+            };
+            string output = test.ToYaml();
+            Out("%YAML 1.2");
+            Out("---");
+            Out(output);
+            Out("...");
+
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
             var savedInputEncoding = Console.InputEncoding;
@@ -134,6 +149,10 @@
                 {
                     string hash = cmdParams[0];
                     Restore(hash);
+                }
+                else if ("note".Equals(cmd, _ignoreCaseCmp))
+                {
+                    
                 }
                 else if ("print".Equals(cmd, _ignoreCaseCmp))
                 {
@@ -420,7 +439,7 @@
                     .OrderByDescending(x => new FileInfo(x).LastWriteTimeUtc)
                     .Skip(amountToKeep)
                     .ToArray();
-            
+
             foreach (string path in allBackups)
             {
                 string hash = Path.GetFileNameWithoutExtension(path);
