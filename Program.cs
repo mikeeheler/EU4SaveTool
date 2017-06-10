@@ -34,21 +34,6 @@
 
         public static int Main(string[] args)
         {
-            var test = new List<BackupData>
-            {
-                new BackupData
-                {
-                    Hash = "123abc",
-                    SaveName = "test.eu4",
-                    SaveLocation = EU4SaveLocation.Local
-                }
-            };
-            string output = test.ToYaml();
-            Out("%YAML 1.2");
-            Out("---");
-            Out(output);
-            Out("...");
-
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
             var savedInputEncoding = Console.InputEncoding;
@@ -92,89 +77,91 @@
 
             Out("Type 'help' or '?' for help.");
 
-            do
+        Loop:
+            bool isLoaded = !string.IsNullOrWhiteSpace(_loadedFilePath)
+                && File.Exists(_loadedFilePath);
+            string prompt = isLoaded ? Path.GetFileNameWithoutExtension(_loadedFilePath) : "--not loaded--";
+
+            string input = ReadInput($"{prompt}> ");
+            if (string.IsNullOrWhiteSpace(input))
             {
-                bool isLoaded = !string.IsNullOrWhiteSpace(_loadedFilePath)
-                    && File.Exists(_loadedFilePath);
-                string prompt = isLoaded ? Path.GetFileNameWithoutExtension(_loadedFilePath) : "--not loaded--";
+                goto Loop;
+            }
 
-                string input = ReadInput($"{prompt}> ");
-                if (string.IsNullOrWhiteSpace(input))
-                {
-                    continue;
-                }
+            string[] cmdArgs = ParseInput(input);
+            if (cmdArgs.Length < 1)
+            {
+                goto Loop;
+            }
 
-                string[] cmdArgs = ParseInput(input);
-                if (cmdArgs.Length < 1)
-                {
-                    continue;
-                }
+            string cmd = cmdArgs.First();
+            string[] cmdParams = cmdArgs.Skip(1).ToArray();
 
-                string cmd = cmdArgs.First();
-                string[] cmdParams = cmdArgs.Skip(1).ToArray();
+            if ("help".Equals(cmd, _ignoreCaseCmp)
+                || "?".Equals(cmd, _ignoreCaseCmp))
+            {
+                ShowHelp();
+            }
+            else if ("backup".Equals(cmd, _ignoreCaseCmp))
+            {
+                Backup();
+            }
+            else if ("clean".Equals(cmd, _ignoreCaseCmp)
+                && cmdParams.Length >= 1)
+            {
+                Clean(cmdParams);
+            }
+            else if ("delete".Equals(cmd, _ignoreCaseCmp)
+                && cmdParams.Length >= 1)
+            {
+                Delete(cmdParams);
+            }
+            else if ("load".Equals(cmd, _ignoreCaseCmp)
+                && cmdParams.Length >= 1)
+            {
+                string filePath = cmdParams[0];
+                Load(filePath);
+            }
+            else if ("print".Equals(cmd, _ignoreCaseCmp))
+            {
+                Print();
+            }
+            else if ("restore".Equals(cmd, _ignoreCaseCmp)
+                && cmdParams.Length >= 1
+                && !string.IsNullOrEmpty(cmdParams[0]))
+            {
+                string hash = cmdParams[0];
+                Restore(hash);
+            }
+            else if ("show".Equals(cmd, _ignoreCaseCmp)
+                && cmdParams.Length >= 1)
+            {
+                string action = cmdParams[0];
+                Show(action);
+            }
+            else if ("tag".Equals(cmd, _ignoreCaseCmp)
+                && cmdParams.Length >= 2
+                && cmdParams[0].Length == 3
+                && !string.IsNullOrWhiteSpace(cmdParams[1]))
+            {
+                string tag = cmdParams[0];
+                string newCountryName = cmdParams[1];
 
-                if ("help".Equals(cmd, _ignoreCaseCmp)
-                    || "?".Equals(cmd, _ignoreCaseCmp))
-                {
-                    ShowHelp();
-                }
-                else if ("tag".Equals(cmd, _ignoreCaseCmp)
-                    && cmdParams.Length >= 2
-                    && cmdParams[0].Length == 3
-                    && !string.IsNullOrWhiteSpace(cmdParams[1]))
-                {
-                    string tag = cmdParams[0];
-                    string newCountryName = cmdParams[1];
+                ChangeTag(tag, newCountryName);
+            }
+            else if ("q".Equals(cmd, _ignoreCaseCmp)
+                || "quit".Equals(cmd, _ignoreCaseCmp))
+            {
+                goto Done;
+            }
+            else
+            {
+                Error("Unrecognized input.");
+            }
 
-                    ChangeTag(tag, newCountryName);
-                }
-                else if ("clean".Equals(cmd, _ignoreCaseCmp)
-                    && cmdParams.Length >= 1)
-                {
-                    Clean(cmdParams);
-                }
-                else if ("load".Equals(cmd, _ignoreCaseCmp)
-                    && cmdParams.Length >= 1)
-                {
-                    string filePath = cmdParams[0];
-                    Load(filePath);
-                }
-                else if ("backup".Equals(cmd, _ignoreCaseCmp))
-                {
-                    Backup();
-                }
-                else if ("restore".Equals(cmd, _ignoreCaseCmp)
-                    && cmdParams.Length >= 1
-                    && !string.IsNullOrEmpty(cmdParams[0]))
-                {
-                    string hash = cmdParams[0];
-                    Restore(hash);
-                }
-                else if ("note".Equals(cmd, _ignoreCaseCmp))
-                {
-                    
-                }
-                else if ("print".Equals(cmd, _ignoreCaseCmp))
-                {
-                    Print();
-                }
-                else if ("show".Equals(cmd, _ignoreCaseCmp)
-                    && cmdParams.Length >= 1)
-                {
-                    string action = cmdParams[0];
-                    Show(action);
-                }
-                else if ("q".Equals(cmd, _ignoreCaseCmp)
-                    || "quit".Equals(cmd, _ignoreCaseCmp))
-                {
-                    break;
-                }
-                else
-                {
-                    Error("Unrecognized input.");
-                }
-            } while (true);
+            goto Loop;
 
+        Done:
             if (_watcher != null)
             {
                 _watcher.Dispose();
@@ -183,171 +170,36 @@
             return 0;
         }
 
-        private static void Error(string message)
-        {
-            Console.Error.WriteLine(message);
-        }
-
-        private static void Out(string message)
-        {
-            Console.WriteLine(message);
-        }
+        #region Actions
 
         private static void ShowHelp(params string[] args)
         {
             Out("Commands:");
-            Out("  tag <new tag> <new country name>");
-            Out("    Changes the player tag; modifies the loaded save file.");
-            Out("  load <file-path.eu4>");
-            Out("    Load a different save file.");
-            Out("  show <command>");
-            Out("    backups");
-            Out("      Show all available backups for the loaded save file.");
-            Out("    saves");
-            Out("      List all saves files.");
+            Out("  backup");
+            Out("    Back up the current save file.");
             Out("  clean <command>");
             Out("    backups [keep=10]");
             Out("      Clean backups for loaded save file, keeping the latest [keep] (defualt: 10).");
             Out("    all backups");
             Out("      Erases all backups for all save files.");
-            Out("  backup");
-            Out("    Back up the current save file.");
+            Out("  delete <hash>");
+            Out("    Delete the specified backup");
+            Out("  load <file-path.eu4>");
+            Out("    Load a different save file.");
             Out("  restore <hash | 'latest'>");
             Out("    Restore backup from the given hash identifier. Partial hash is OK.");
             Out("    Use 'show backups' for list of existing backups.");
+            Out("  show <command>");
+            Out("    backups");
+            Out("      Show all available backups for the loaded save file.");
+            Out("    saves");
+            Out("      List all saves files.");
+            Out("  tag <new tag> <new country name>");
+            Out("    Changes the player tag; modifies the loaded save file.");
             Out("  print");
             Out("    Output all meta data for the loaded save file.");
             Out("  quit");
             Out("    Exit " + nameof(EU4SaveTool) + ".");
-        }
-
-        private static string GetShellFolder(string key)
-        {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                throw new NotSupportedException("Must be run on Windows.");
-            }
-
-            const string subKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders";
-
-            using (var regKey = Registry.CurrentUser.OpenSubKey(subKey))
-            {
-                if (regKey == null)
-                {
-                    throw new InvalidOperationException("Unable to open HKCU\\" + subKey);
-                }
-
-                return regKey.GetValue(key).ToString();
-            }
-        }
-
-        private static string GetAppDataPath()
-        {
-            string localAppData = GetShellFolder("Local AppData");
-            if (string.IsNullOrWhiteSpace(localAppData) || !Directory.Exists(localAppData))
-            {
-                throw new InvalidOperationException("Unable to find local app data folder.");
-            }
-
-            string appDataPath = Path.Combine(localAppData, nameof(EU4SaveTool));
-            Directory.CreateDirectory(appDataPath);
-
-            return appDataPath;
-        }
-
-        private static string GetMyDocumentsPath()
-        {
-            return GetShellFolder("Personal");
-        }
-
-        private static string GetBaseBackupPath()
-        {
-            string backupPath = Path.Combine(GetAppDataPath(), "backups");
-            Directory.CreateDirectory(backupPath);
-            return backupPath;
-        }
-
-        private static string GetBackupPath(string saveFilePath)
-        {
-            string fullPath = Path.GetFullPath(saveFilePath);
-            string basename = Path.GetFileNameWithoutExtension(fullPath);
-
-            string backupPath = Path.Combine(GetBaseBackupPath(), basename);
-            Directory.CreateDirectory(backupPath);
-
-            return backupPath;
-        }
-
-        private static SteamAppManifest GetEu4AppManifest()
-        {
-            uint steamActiveUserId = Steam.ActiveUserId;
-            if (steamActiveUserId == 0)
-            {
-                Error("Steam must be running.");
-                return null;
-            }
-
-            string steamInstallPath = Steam.InstallPath;
-            var installedApps = Steam.GetInstalledApps();
-            var eu4AppManifest = installedApps.FirstOrDefault(x => x.AppId == _eu4AppId);
-            if (eu4AppManifest == null)
-            {
-                Error("Could not find EU4 install path.");
-            }
-
-            return eu4AppManifest;
-        }
-
-        private static void OnChanged(object source, FileSystemEventArgs e)
-        {
-            if (e.FullPath.Equals(_loadedFilePath))
-            {
-                Task.Delay(TimeSpan.FromSeconds(1.0)).ContinueWith(_ => Backup());
-            }
-        }
-
-        private static void OnWatcherError(object source, ErrorEventArgs e)
-        {
-            Out("-> OnWatcherError: " + e.GetException().ToString());
-
-            _watcher.EnableRaisingEvents = false;
-            string path = _watcher.Path;
-            string filter = _watcher.Filter;
-
-            if (_watcher != null)
-            {
-                _watcher.Dispose();
-            }
-            _watcher = null;
-
-            Load(Path.Combine(path, filter));
-        }
-
-        private static string ReadInput(string prompt)
-        {
-            Out(string.Empty);
-            Console.Write(prompt);
-            string input = Console.ReadLine().Trim();
-            Out(string.Empty);
-            return input;
-        }
-
-        private static string[] ParseInput(string input)
-        {
-            string[] parsed = Regex.Split(
-                input,
-                "(?<=^[^\"]*(?:\"[^\"]*\"[^\"]*)*) (?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
-            return parsed.Select(x => x.Trim('"')).ToArray();
-        }
-
-        private static string GetHash(string file)
-        {
-            using (var md5 = MD5.Create())
-            {
-                byte[] contents = File.ReadAllBytes(file);
-                byte[] hash = md5.ComputeHash(contents);
-                return BitConverter.ToString(hash).ToLowerInvariant().Replace("-", "");
-            }
         }
 
         private static void Load(params string[] args)
@@ -503,6 +355,24 @@
             }
         }
 
+        private static void Delete(params string[] args)
+        {
+            string hash = args.First();
+            if (string.IsNullOrWhiteSpace(hash))
+            {
+                Error("Invalid input.");
+                return;
+            }
+
+            string ext = Path.GetExtension(_loadedFilePath);
+            string[] matches = FindHashFile(hash);
+            foreach (string filePath in matches)
+            {
+                File.Delete(filePath);
+                Out($"Deleted {Path.GetFileNameWithoutExtension(filePath)}");
+            }
+        }
+
         private static void Restore(string hash)
         {
             string backupFilePath = GetBackupPath(_loadedFilePath);
@@ -524,13 +394,13 @@
             }
             else if (!string.IsNullOrEmpty(hash))
             {
-                var matches = Directory.EnumerateFileSystemEntries(backupFilePath, $"{hash}*{ext}").ToList();
-                if (matches.Count == 0)
+                string[] matches = FindHashFile(hash);
+                if (matches.Length == 0)
                 {
                     return;
                 }
 
-                if (matches.Count > 1)
+                if (matches.Length > 1)
                 {
                     Error($"More than one backup matches '{hash}'.");
                     Error("Provide more context to select a single backup.");
@@ -648,6 +518,55 @@
             }
         }
 
+        #endregion
+
+        #region Support Methods
+
+        private static void Error(string message)
+        {
+            Console.Error.WriteLine(message);
+        }
+
+        private static void Out(string message)
+        {
+            Console.WriteLine(message);
+        }
+
+        private static void OnChanged(object source, FileSystemEventArgs e)
+        {
+            if (e.FullPath.Equals(_loadedFilePath))
+            {
+                Task.Delay(TimeSpan.FromSeconds(1.0)).ContinueWith(_ => Backup());
+            }
+        }
+
+        private static void OnWatcherError(object source, ErrorEventArgs e)
+        {
+            Out("-> OnWatcherError: " + e.GetException().ToString());
+
+            _watcher.EnableRaisingEvents = false;
+            string path = _watcher.Path;
+            string filter = _watcher.Filter;
+
+            if (_watcher != null)
+            {
+                _watcher.Dispose();
+            }
+            _watcher = null;
+
+            Load(Path.Combine(path, filter));
+        }
+
+        private static string GetHash(string file)
+        {
+            using (var md5 = MD5.Create())
+            {
+                byte[] contents = File.ReadAllBytes(file);
+                byte[] hash = md5.ComputeHash(contents);
+                return BitConverter.ToString(hash).ToLowerInvariant().Replace("-", "");
+            }
+        }
+
         private static Stream OpenMeta(string fullPath)
         {
             lock (_writeLock)
@@ -687,6 +606,14 @@
             writer.Write(valueBytes);
         }
 
+        private static string[] FindHashFile(string hash)
+        {
+            string backupPath = GetBackupPath(_loadedFilePath);
+            string ext = Path.GetExtension(_loadedFilePath);
+            string[] matches = Directory.EnumerateFiles(backupPath, $"{hash}*{ext}", SearchOption.AllDirectories).ToArray();
+            return matches;
+        }
+
         private static int GetIndexOf(byte[] input, byte[] context)
         {
             if (input.Length < context.Length)
@@ -714,5 +641,101 @@
 
             return -1;
         }
+
+        private static string GetShellFolder(string key)
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                throw new NotSupportedException("Must be run on Windows.");
+            }
+
+            const string subKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders";
+
+            using (var regKey = Registry.CurrentUser.OpenSubKey(subKey))
+            {
+                if (regKey == null)
+                {
+                    throw new InvalidOperationException("Unable to open HKCU\\" + subKey);
+                }
+
+                return regKey.GetValue(key).ToString();
+            }
+        }
+
+        private static string GetAppDataPath()
+        {
+            string localAppData = GetShellFolder("Local AppData");
+            if (string.IsNullOrWhiteSpace(localAppData) || !Directory.Exists(localAppData))
+            {
+                throw new InvalidOperationException("Unable to find local app data folder.");
+            }
+
+            string appDataPath = Path.Combine(localAppData, nameof(EU4SaveTool));
+            Directory.CreateDirectory(appDataPath);
+
+            return appDataPath;
+        }
+
+        private static string GetMyDocumentsPath()
+        {
+            return GetShellFolder("Personal");
+        }
+
+        private static string GetBaseBackupPath()
+        {
+            string backupPath = Path.Combine(GetAppDataPath(), "backups");
+            Directory.CreateDirectory(backupPath);
+            return backupPath;
+        }
+
+        private static string GetBackupPath(string saveFilePath)
+        {
+            string fullPath = Path.GetFullPath(saveFilePath);
+            string basename = Path.GetFileNameWithoutExtension(fullPath);
+
+            string backupPath = Path.Combine(GetBaseBackupPath(), basename);
+            Directory.CreateDirectory(backupPath);
+
+            return backupPath;
+        }
+
+        private static SteamAppManifest GetEu4AppManifest()
+        {
+            uint steamActiveUserId = Steam.ActiveUserId;
+            if (steamActiveUserId == 0)
+            {
+                Error("Steam must be running.");
+                return null;
+            }
+
+            string steamInstallPath = Steam.InstallPath;
+            var installedApps = Steam.GetInstalledApps();
+            var eu4AppManifest = installedApps.FirstOrDefault(x => x.AppId == _eu4AppId);
+            if (eu4AppManifest == null)
+            {
+                Error("Could not find EU4 install path.");
+            }
+
+            return eu4AppManifest;
+        }
+
+        private static string ReadInput(string prompt)
+        {
+            Out(string.Empty);
+            Console.Write(prompt);
+            string input = Console.ReadLine().Trim();
+            Out(string.Empty);
+            return input;
+        }
+
+        private static string[] ParseInput(string input)
+        {
+            string[] parsed = Regex.Split(
+                input,
+                "(?<=^[^\"]*(?:\"[^\"]*\"[^\"]*)*) (?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
+            return parsed.Select(x => x.Trim('"')).ToArray();
+        }
+
+        #endregion
     }
 }
