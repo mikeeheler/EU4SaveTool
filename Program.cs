@@ -150,7 +150,8 @@
                 ChangeTag(tag, newCountryName);
             }
             else if ("q".Equals(cmd, _ignoreCaseCmp)
-                || "quit".Equals(cmd, _ignoreCaseCmp))
+                || "quit".Equals(cmd, _ignoreCaseCmp)
+                || "exit".Equals(cmd, _ignoreCaseCmp))
             {
                 goto Done;
             }
@@ -489,15 +490,27 @@
 
             Out($"Backup Path: {backupDirName}");
             Out(string.Empty);
-            Out("|     | Date       | Tag | IronMan | Hash                             |");
-            Out("| --- | ---------- | --- | ------- | -------------------------------- |");
+            Out("|     | Date       | Tag | IronMan | Hash                             | Version  |");
+            Out("| --- | ---------- | --- | ------- | -------------------------------- | -------- |");
+
+            var outputBuilder = new StringBuilder(100);
             foreach (string backupFilePath in sorted)
             {
                 using (var stream = OpenMeta(backupFilePath))
                 {
                     EU4SaveMeta save = EU4SaveMeta.Load(stream);
                     string hash = Path.GetFileNameWithoutExtension(backupFilePath);
-                    Out($"| {i,-3} | {save.Date.ToString().PadRight(10)} | {save.PlayerTag} | {BoolYesNo(save.IronMan),-7} | {hash} |");
+
+                    outputBuilder.Clear();
+                    outputBuilder.Append($"| {i,-3} ");
+                    outputBuilder.Append($"| {save.Date.ToString().PadRight(10)} ");
+                    outputBuilder.Append($"| {save.PlayerTag} ");
+                    outputBuilder.Append($"| {BoolYesNo(save.IronMan),-7} ");
+                    outputBuilder.Append($"| {hash} ");
+                    outputBuilder.Append($"| {save.SaveGameVersion.ToString("s")} ");
+                    outputBuilder.Append("|");
+
+                    Out(outputBuilder.ToString());
                 }
                 ++i;
             }
