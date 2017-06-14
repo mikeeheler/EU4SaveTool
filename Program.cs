@@ -485,7 +485,17 @@
             string backupDirName = GetBackupPath(_loadedFilePath);
             string ext = Path.GetExtension(_loadedFilePath);
             IEnumerable<string> backupFiles = Directory.EnumerateFileSystemEntries(backupDirName, $"*{ext}");
-            IOrderedEnumerable<string> sorted = backupFiles.OrderByDescending(x => new FileInfo(x).LastWriteTimeUtc);
+            var saveMetas = backupFiles.ToDictionary<string, string, EU4SaveMeta>(
+                filePath => filePath,
+                filePath =>
+                {
+                    using (var stream = OpenMeta(filePath))
+                    {
+                        return EU4SaveMeta.Load(stream);
+                    }
+                },
+                StringComparer.OrdinalIgnoreCase);
+
             int i = 1;
 
             Out($"Backup Path: {backupDirName}");
@@ -494,24 +504,24 @@
             Out("| --- | ---------- | --- | ------- | -------------------------------- | -------- |");
 
             var outputBuilder = new StringBuilder(100);
-            foreach (string backupFilePath in sorted)
+            // TODO change sorting to sort by date
+            foreach (var saveWithMeta in saveMetas.OrderByDescending(x => new FileInfo(x.Key).LastWriteTimeUtc))
             {
-                using (var stream = OpenMeta(backupFilePath))
-                {
-                    EU4SaveMeta save = EU4SaveMeta.Load(stream);
-                    string hash = Path.GetFileNameWithoutExtension(backupFilePath);
+                string backupFilePath = saveWithMeta.Key;
+                EU4SaveMeta save = saveWithMeta.Value;
 
-                    outputBuilder.Clear();
-                    outputBuilder.Append($"| {i,-3} ");
-                    outputBuilder.Append($"| {save.Date.ToString().PadRight(10)} ");
-                    outputBuilder.Append($"| {save.PlayerTag} ");
-                    outputBuilder.Append($"| {BoolYesNo(save.IronMan),-7} ");
-                    outputBuilder.Append($"| {hash} ");
-                    outputBuilder.Append($"| {save.SaveGameVersion.ToString("s")} ");
-                    outputBuilder.Append("|");
+                string hash = Path.GetFileNameWithoutExtension(saveWithMeta.Key);
 
-                    Out(outputBuilder.ToString());
-                }
+                outputBuilder.Clear();
+                outputBuilder.Append($"| {i,-3} ");
+                outputBuilder.Append($"| {save.Date.ToString().PadRight(10)} ");
+                outputBuilder.Append($"| {save.PlayerTag} ");
+                outputBuilder.Append($"| {BoolYesNo(save.IronMan),-7} ");
+                outputBuilder.Append($"| {hash} ");
+                outputBuilder.Append($"| {save.SaveGameVersion.ToString("s")} ");
+                outputBuilder.Append("|");
+
+                Out(outputBuilder.ToString());
                 ++i;
             }
         }

@@ -1,11 +1,13 @@
 ﻿namespace EU4SaveTool
 {
+    using System;
+
     /// <summary>
     /// Emulates a 'date' in EU4, which comes in two forms: a yyyy.mm.dd tuple and an integer representing the number
     /// of hours since Midnight, 1 Jan 5000 BCE. The former is used in text serialization and the latter is used in
     /// binary serialization.
     /// </summary>
-    public sealed class EU4Date
+    public sealed class EU4Date : IComparable<int>, IComparable<EU4Date>
     {
         public static readonly EU4Date StartingDate = new EU4Date(1444, 11, 11);
 
@@ -76,6 +78,19 @@
             }
 
             return _monthOffsets.Length;
+        }
+
+        public int CompareTo(int other)
+        {
+            return ToInt().CompareTo(other);
+        }
+
+        public int CompareTo(EU4Date other)
+        {
+            if (ReferenceEquals(this, other)) return 0;
+            if (other == null) return 1;
+
+            return ((IComparable<int>)this).CompareTo(other.ToInt());
         }
     }
 }
