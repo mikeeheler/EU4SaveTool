@@ -14,6 +14,7 @@
         public EU4Date Date { get; set; } = EU4Date.StartingDate;
         public string SaveGame { get; set; }
         public string PlayerTag { get; set; }
+        public EU4CountryColors CountryColors { get; set; }
         public string PlayerCountryName { get; set; }
         public EU4SaveGameVersion SaveGameVersion { get; set; }
         public List<string> SaveGameVersions { get; set; }
@@ -100,6 +101,11 @@
             const ushort dateId = 0x284d;
             const ushort saveGameId = 0x2c69;
             const ushort playerTagId = 0x2a38;
+            const ushort countryColorsId = 0x3116;
+            const ushort flagId = 0x2d52;
+            const ushort colorId = 0x0056;
+            const ushort symbolIndexId = 0x34f5;
+            const ushort flagColorsId = 0x311a;
             const ushort playerCountryNameId = 0x32b8;
             const ushort saveGameVersionId = 0x2ec9;
             const ushort saveGameVersionsId = 0x314b;
@@ -144,6 +150,28 @@
                         case playerTagId:
                             result.PlayerTag = (string)data;
                             break;
+                        case countryColorsId:
+                            result.CountryColors = new EU4CountryColors();
+                            foreach ((ushort, object) item in ((List<object>)data).Cast<(ushort, object)>())
+                            {
+                                switch (item.Item1)
+                                {
+                                    case flagId:
+                                        result.CountryColors.Flag = (int)item.Item2;
+                                        break;
+                                    case colorId:
+                                        result.CountryColors.Color = (int)item.Item2;
+                                        break;
+                                    case symbolIndexId:
+                                        result.CountryColors.SymbolIndex = (int)item.Item2;
+                                        break;
+                                    case flagColorsId:
+                                        result.CountryColors.FlagColors = new List<int>(
+                                            ((List<object>)item.Item2).Cast<int>());
+                                        break;
+                                }
+                            }
+                            break;
                         case playerCountryNameId:
                             result.PlayerCountryName = (string)data;
                             break;
@@ -187,5 +215,6 @@
 
             return result;
         }
+
     }
 }

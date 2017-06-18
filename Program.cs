@@ -140,14 +140,10 @@
                 Show(action);
             }
             else if ("tag".Equals(cmd, _ignoreCaseCmp)
-                && cmdParams.Length >= 2
-                && cmdParams[0].Length == 3
-                && !string.IsNullOrWhiteSpace(cmdParams[1]))
+                && cmdParams.Length >= 1
+                && cmdParams[0].Length == 3)
             {
-                string tag = cmdParams[0];
-                string newCountryName = cmdParams[1];
-
-                ChangeTag(tag, newCountryName);
+                ChangeTag(cmdParams);
             }
             else if ("q".Equals(cmd, _ignoreCaseCmp)
                 || "quit".Equals(cmd, _ignoreCaseCmp)
@@ -308,10 +304,10 @@
             Out($"All backups removed from {backupPath}.");
         }
 
-        private static void ChangeTag(string tag, string name)
+        private static void ChangeTag(params string[] cmdParams)
         {
+            string newTag = cmdParams.First();
             byte[] tagContext = { 0x38, 0x2a, 0x01, 0x00, 0x0f, 0x00 };
-            byte[] nameContext = { 0xb8, 0x32, 0x01, 0x00, 0x0f, 0x00 };
 
             lock (_writeLock)
             {
@@ -339,16 +335,9 @@
                         newEntry.Write(buffer);
 
                         string existingTag = ReadString(reader, _encoding);
-                        WriteString(newEntry, tag, _encoding);
+                        WriteString(newEntry, newTag, _encoding);
 
-                        Out("Tag: " + existingTag + " -> " + tag);
-                        index = GetIndexOf(metaBytes, nameContext);
-                        reader.BaseStream.Seek(nameContext.Length, SeekOrigin.Current);
-                        newEntry.Write(nameContext);
-
-                        string existingName = ReadString(reader, _encoding);
-                        WriteString(newEntry, name, _encoding);
-                        Out("Name: " + existingName + " -> " + name);
+                        Out("Tag: " + existingTag + " -> " + newTag);
 
                         reader.BaseStream.CopyTo(newEntry.BaseStream);
                     }
@@ -435,6 +424,20 @@
                 Out($"  date={saveData.Date}");
                 Out($"  save_game={saveData.SaveGame}");
                 Out($"  player={saveData.PlayerTag}");
+                if (saveData.CountryColors != null)
+                {
+                    Out($"  country_colors={{");
+                    Out($"    flag={saveData.CountryColors.Flag}");
+                    Out($"    color={saveData.CountryColors.Color}");
+                    Out($"    symbol_index={saveData.CountryColors.SymbolIndex}");
+                    Out($"    flag_colors={{");
+                    if (saveData.CountryColors.FlagColors != null)
+                    {
+                        Out($"      {string.Join(" ", saveData.CountryColors.FlagColors)}");
+                    }
+                    Out($"    }}");
+                    Out($"  }}");
+                }
                 Out($"  displayed_country_name={saveData.PlayerCountryName}");
                 Out($"  savegame_version={{");
                 Out($"    first={saveData.SaveGameVersion.First}");
