@@ -25,6 +25,59 @@
         public bool NotObserver { get; set; }
         public string CheckSum { get; set; }
 
+        public override string ToString()
+        {
+            var output = new StringBuilder();
+            output.AppendLine($"date={Date}");
+            output.AppendLine($"save_game={SaveGame}");
+            output.AppendLine($"player={PlayerTag}");
+            if (CountryColors != null)
+            {
+                output.AppendLine($"country_colors={{");
+                output.AppendLine($"  flag={CountryColors.Flag}");
+                output.AppendLine($"  color={CountryColors.Color}");
+                output.AppendLine($"  symbol_index={CountryColors.SymbolIndex}");
+                output.AppendLine($"  flag_colors={{");
+                if (CountryColors.FlagColors != null)
+                {
+                    output.AppendLine($"    {string.Join(" ", CountryColors.FlagColors)}");
+                }
+                output.AppendLine($"  }}");
+                output.AppendLine($"}}");
+            }
+            output.AppendLine($"displayed_country_name={PlayerCountryName}");
+            output.AppendLine($"savegame_version={{");
+            output.AppendLine($"  first={SaveGameVersion.First}");
+            output.AppendLine($"  second={SaveGameVersion.Second}");
+            output.AppendLine($"  third={SaveGameVersion.Third}");
+            output.AppendLine($"  forth={SaveGameVersion.Fourth}");
+            output.AppendLine($"  name={SaveGameVersion.Name}");
+            output.AppendLine($"}}");
+            output.AppendLine($"savegame_versions={{");
+            foreach (string versionString in SaveGameVersions)
+            {
+                output.AppendLine($"  {versionString}");
+            }
+            output.AppendLine($"}}");
+            output.AppendLine($"dlc_enabled={{");
+            foreach (string dlcName in DlcEnabled)
+            {
+                output.AppendLine($"  {dlcName}");
+            }
+            output.AppendLine($"}}");
+            output.AppendLine($"mod_enabled={{");
+            foreach (string modName in ModEnabled)
+            {
+                output.AppendLine($"  {modName}");
+            }
+            output.AppendLine($"}}");
+            output.AppendLine($"iron_man={Utils.BoolYesNo(IronMan)}");
+            output.AppendLine($"multi_player={Utils.BoolYesNo(MultiPlayer)}");
+            output.AppendLine($"not_observer={Utils.BoolYesNo(NotObserver)}");
+            output.AppendLine($"checksum={CheckSum}");
+            return output.ToString();
+        }
+
         private static object ReadData(BinaryReader reader)
         {
             const ushort intTypeId = 0x000c;

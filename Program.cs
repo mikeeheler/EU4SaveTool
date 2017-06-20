@@ -347,19 +347,21 @@
 
         private static void Delete(params string[] args)
         {
-            string hash = args.First();
-            if (string.IsNullOrWhiteSpace(hash))
+            foreach (string hash in args)
             {
-                Error("Invalid input.");
-                return;
-            }
+                if (string.IsNullOrWhiteSpace(hash))
+                {
+                    Error("Invalid input: " + hash);
+                    continue;
+                }
 
-            string ext = Path.GetExtension(_loadedFilePath);
-            string[] matches = FindHashFile(hash);
-            foreach (string filePath in matches)
-            {
-                File.Delete(filePath);
-                Out($"Deleted {Path.GetFileNameWithoutExtension(filePath)}");
+                string ext = Path.GetExtension(_loadedFilePath);
+                string[] matches = FindHashFile(hash);
+                foreach (string filePath in matches)
+                {
+                    File.Delete(filePath);
+                    Out($"Deleted {Path.GetFileNameWithoutExtension(filePath)}");
+                }
             }
         }
 
@@ -421,53 +423,14 @@
             {
                 var saveData = EU4SaveMeta.Load(contentStream);
                 Out($"SaveType: {saveData.SaveType}");
-                Out($"  date={saveData.Date}");
-                Out($"  save_game={saveData.SaveGame}");
-                Out($"  player={saveData.PlayerTag}");
-                if (saveData.CountryColors != null)
+                using (var reader = new StringReader(saveData.ToString()))
                 {
-                    Out($"  country_colors={{");
-                    Out($"    flag={saveData.CountryColors.Flag}");
-                    Out($"    color={saveData.CountryColors.Color}");
-                    Out($"    symbol_index={saveData.CountryColors.SymbolIndex}");
-                    Out($"    flag_colors={{");
-                    if (saveData.CountryColors.FlagColors != null)
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
                     {
-                        Out($"      {string.Join(" ", saveData.CountryColors.FlagColors)}");
+                        Out("  " + line);
                     }
-                    Out($"    }}");
-                    Out($"  }}");
                 }
-                Out($"  displayed_country_name={saveData.PlayerCountryName}");
-                Out($"  savegame_version={{");
-                Out($"    first={saveData.SaveGameVersion.First}");
-                Out($"    second={saveData.SaveGameVersion.Second}");
-                Out($"    third={saveData.SaveGameVersion.Third}");
-                Out($"    forth={saveData.SaveGameVersion.Fourth}");
-                Out($"    name={saveData.SaveGameVersion.Name}");
-                Out($"  }}");
-                Out($"  savegame_versions={{");
-                foreach (string versionString in saveData.SaveGameVersions)
-                {
-                    Out($"    {versionString}");
-                }
-                Out($"  }}");
-                Out($"  dlc_enabled={{");
-                foreach (string dlcName in saveData.DlcEnabled)
-                {
-                    Out($"    {dlcName}");
-                }
-                Out($"  }}");
-                Out($"  mod_enabled={{");
-                foreach (string modName in saveData.ModEnabled)
-                {
-                    Out($"    {modName}");
-                }
-                Out($"  }}");
-                Out($"  iron_man={BoolYesNo(saveData.IronMan)}");
-                Out($"  multi_player={BoolYesNo(saveData.MultiPlayer)}");
-                Out($"  not_observer={BoolYesNo(saveData.NotObserver)}");
-                Out($"  checksum={saveData.CheckSum}");
             }
         }
 
@@ -507,7 +470,6 @@
             Out("| --- | ---------- | --- | ------- | -------------------------------- | -------- |");
 
             var outputBuilder = new StringBuilder(100);
-            // TODO change sorting to sort by date
             foreach (var saveWithMeta in saveMetas.OrderByDescending(x => new FileInfo(x.Key).LastWriteTimeUtc))
             {
                 string backupFilePath = saveWithMeta.Key;
