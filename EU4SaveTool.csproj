@@ -8,6 +8,6 @@
     <PackageReference Include="System.Runtime.Extensions" Version="4.3.0"/>
     <PackageReference Include="System.Text.Encoding.CodePages" Version="4.3.0"/>
     <PackageReference Include="System.ValueTuple" Version="4.3.0"/>
-    <PackageReference Include="YamlDotNet" Version="4.2.1"/>
+    <PackageReference Include="YamlDotNet" Version="5.2.1"/>
   </ItemGroup>
 </Project>
